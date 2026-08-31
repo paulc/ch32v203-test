@@ -24,7 +24,6 @@ ch32-hal = {
     default-features = false,
 }
 
-# wfi issue with platform-riscv32 so use platform-spin
 embassy-executor = { version = "0.10.0", features = [
     "executor-thread",
 ] }

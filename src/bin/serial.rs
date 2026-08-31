@@ -48,7 +48,19 @@ impl ufmt::uWrite for TxSink {
 
 #[macro_export]
 macro_rules! serial_println {
-    ($($arg:tt)*) => { let _ = ::ufmt::uwriteln!(&mut $crate::TxSink, $($arg)*); };
+    ($($arg:tt)*) => {{ let _ = ::ufmt::uwriteln!(&mut $crate::TxSink, $($arg)*); }};
+}
+
+async fn handle_cmd(line: &str) {
+    let line = line.trim_ascii();
+    if !line.is_empty() {
+        let mut it = line.split_ascii_whitespace();
+        match it.next() {
+            Some("hello") => serial_println!("-- Hello >>{}<<", it.next().unwrap_or("There")),
+            Some(cmd) => serial_println!("-- CMD: {}", cmd),
+            None => {}
+        }
+    }
 }
 
 #[embassy_executor::task]
@@ -64,15 +76,12 @@ async fn serial_read(
                     let s = unsafe { str::from_utf8_unchecked(&buf[..n]) };
                     // Check if buffer full
                     if line_buf.push_str(s).is_err() {
-                        serial_println!("-- Line: {}", &line_buf);
+                        handle_cmd(&line_buf).await;
                         line_buf.clear();
                     }
                     // Check for line
                     while let Some(i) = line_buf.find(['\n', '\r']) {
-                        let line = line_buf[..i].trim_ascii();
-                        if !line.is_empty() {
-                            serial_println!("-- Line: {}", line);
-                        }
+                        handle_cmd(&line_buf[..i].trim_ascii()).await;
                         line_buf.drain(..=i);
                     }
                 }
