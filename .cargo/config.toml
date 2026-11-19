@@ -6,5 +6,5 @@ rustflags = [
 #  "-C", "link-arg=-Tlink.x",
 ]
 
-runner = "wchisp flash"
-# runner = "wlink -v flash --enable-sdi-print --watch-serial --erase"
+# runner = "wchisp flash"
+runner = "wlink flash --enable-sdi-print --watch-serial --erase"

@@ -4,12 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-default = ["embassy-executor/platform-spin"]
-platform-riscv32 = ["embassy-executor/platform-riscv32"]
+default = ["embassy-executor/platform-riscv32"]
+platform-spin = ["embassy-executor/platform-spin"]
 
 [dependencies]
-qingke-rt = "0.7"
-qingke = "0.7"
+qingke-rt = "0.8.4"
+qingke = "0.8.4"
 
 ch32-hal = { 
     git = "https://github.com/ch32-rs/ch32-hal",
@@ -44,6 +44,7 @@ ufmt = { version = "0.2.0" }
 heapless = { version = "0.9.3", features = ["ufmt"] }
 static_cell = "2.1.1"
 critical-section = "1.2.0"
+panic-halt = "1.0"
 
 [profile.release]
 opt-level = "z"        # try "s" too — sometimes wins

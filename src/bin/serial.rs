@@ -14,7 +14,7 @@ bind_interrupts!(struct Irqs {
     USART1 => ch32_hal::usart::InterruptHandler<ch32_hal::peripherals::USART1>;
 });
 
-pub static TX_PIPE: Pipe<CriticalSectionRawMutex, 64> = Pipe::new();
+pub static TX_PIPE: Pipe<CriticalSectionRawMutex, 256> = Pipe::new();
 
 pub struct TxSink;
 
@@ -145,12 +145,12 @@ async fn main(spawner: Spawner) -> ! {
     spawner.spawn(serial_write(uart_tx).unwrap());
 
     // LED
-    let mut led = Output::new(p.PB2, Level::Low, Default::default());
+    let mut led = Output::new(p.PA15, Level::Low, Default::default());
     let mut count = 0_u32;
     loop {
         led.toggle();
         serial_println!(">> Count: {}", count);
-        Timer::after_millis(500).await;
+        Timer::after_millis(2000).await;
         count += 1;
     }
 }

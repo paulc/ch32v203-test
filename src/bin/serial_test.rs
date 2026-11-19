@@ -18,7 +18,7 @@ async fn main(_spawner: Spawner) -> ! {
 
     let uart_tx = p.PA9;
     let uart_rx = p.PA10;
-    let mut led = Output::new(p.PB2, Level::Low, Default::default());
+    let mut led = Output::new(p.PA15, Level::Low, Default::default());
 
     let uart_config = usart::Config::default(); // 115200,N,8,1
     let (mut uart_tx, mut uart_rx) = match usart::Uart::new(
