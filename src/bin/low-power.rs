@@ -33,7 +33,7 @@ async fn main(_spawner: Spawner) -> ! {
     let uart_rx = p.PA10;
     let led_pin = p.PA15;
 
-    let mut buf = heapless::String::<96>::new();
+    let mut buf = heapless::String::<256>::new();
 
     lowpower::gpio_all_pulldown(false);
     let _ = Input::new(uart_tx.reborrow(), Pull::Up);
@@ -68,10 +68,11 @@ async fn main(_spawner: Spawner) -> ! {
     let rtc_init = lowpower::rtc_init().is_ok();
 
     if !woke_from_standby {
-        lowpower::bkp_write(2, 0);
+        // Clear BKP regs
+        lowpower::bkp_write_buf([0_u8; 20]);
     }
 
-    let counter = lowpower::bkp_read(2);
+    let counter = lowpower::bkp_read(1);
     let _ = uwrite!(
         buf,
         "=== WAKE: cause={} rst={} csr={} rtc_init={} counter={}\r\n",
@@ -85,7 +86,17 @@ async fn main(_spawner: Spawner) -> ! {
     let _ = uart_tx.flush().await;
     buf.clear();
 
-    lowpower::bkp_write(2, counter.wrapping_add(1));
+    let mut bkp = lowpower::bkp_read_buf();
+    let _ = uwrite!(buf, "=== BKP: {:?}\r\n", bkp);
+    let _ = uart_tx.write(buf.as_bytes()).await;
+    let _ = uart_tx.flush().await;
+    buf.clear();
+
+    let c2 = counter.wrapping_add(1).wrapping_pow(2) as u32;
+    bkp[16..20].copy_from_slice(&c2.to_le_bytes());
+    lowpower::bkp_write_buf(bkp);
+
+    lowpower::bkp_write(1, counter.wrapping_add(1));
 
     loop {
         led.set_high();

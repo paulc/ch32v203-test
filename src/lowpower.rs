@@ -448,6 +448,24 @@ pub fn bkp_write(n: usize, value: u16) {
     unsafe { ((BKP_BASE + 4 * n) as *mut u32).write_volatile(value as u32) };
 }
 
+/// Read backup registers as [u8; 20]
+pub fn bkp_read_buf() -> [u8; 20] {
+    let mut buf = [0_u8; 20];
+    for (i, s) in buf.chunks_exact_mut(2).enumerate() {
+        s.copy_from_slice(&bkp_read(i + 1).to_le_bytes())
+    }
+    buf
+}
+
+/// Write backup registers from [u8; 20]
+pub fn bkp_write_buf(buf: [u8; 20]) {
+    let mut r = [0_u8; 2];
+    for (i, s) in buf.chunks_exact(2).enumerate() {
+        r.copy_from_slice(s);
+        bkp_write(i + 1, u16::from_le_bytes(r));
+    }
+}
+
 fn system_reset() -> ! {
     // PFIC_CFGR: KEYCODE = 0xBEEF, RESETSYS = 1.
     pac::PFIC
