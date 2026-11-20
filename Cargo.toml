@@ -6,6 +6,7 @@ edition = "2024"
 [features]
 default = ["embassy-executor/platform-riscv32"]
 platform-spin = ["embassy-executor/platform-spin"]
+usart2 = []
 
 [dependencies]
 qingke-rt = "0.8.4"

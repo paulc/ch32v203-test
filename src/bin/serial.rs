@@ -6,10 +6,17 @@ use ch32_hal::gpio::{Level, Output};
 use ch32_hal::usart;
 
 use embassy_executor::Spawner;
+use embassy_sync::channel::Channel;
 use embassy_time::Timer;
 
-use v203::serial::{serial_read, serial_write};
-use v203::serial_println;
+use portable_atomic::Ordering;
+
+use static_cell::StaticCell;
+
+use v203::console_println;
+use v203::serial::{serial1_read, serial1_write, RxChannelType, RxReceiverType, PORT1};
+
+static RX_CHANNEL: StaticCell<RxChannelType> = StaticCell::new();
 
 bind_interrupts!(struct Irqs {
     USART1 => ch32_hal::usart::InterruptHandler<ch32_hal::peripherals::USART1>;
@@ -40,18 +47,50 @@ async fn main(spawner: Spawner) -> ! {
         }
     };
 
-    // Spawn serial reader/writer tasks
-    spawner.spawn(serial_read(uart_rx).unwrap());
-    spawner.spawn(serial_write(uart_tx).unwrap());
+    // Create channel for serial handler
+    let rx_chan = RX_CHANNEL.init(Channel::new());
+    let rx_sender = rx_chan.sender();
+    let rx_receiver = rx_chan.receiver();
+
+    // Spawn serial reader/writer/handler tasks
+    spawner.spawn(serial1_read(uart_rx, rx_sender).unwrap());
+    spawner.spawn(serial1_write(uart_tx).unwrap());
+    spawner.spawn(serial_handler(rx_receiver).unwrap());
 
     // LED
     let mut led = Output::new(p.PA15, Level::Low, Default::default());
     let mut count = 0_u32;
     loop {
         led.toggle();
-        serial_println!(">> Count: {}", count);
-        Timer::after_millis(2000).await;
+        console_println!(">> Count: {}", count);
+        Timer::after_millis(5000).await;
         count += 1;
+    }
+}
+
+#[embassy_executor::task]
+pub async fn serial_handler(chan: RxReceiverType) {
+    loop {
+        let line = chan.receive().await;
+        if !line.is_empty() {
+            let mut it = line.split_ascii_whitespace();
+            match it.next() {
+                Some("hello") => {
+                    console_println!("-- Hello >>{}<<", it.next().unwrap_or("There"))
+                }
+                Some("echo") => {
+                    if it.next().unwrap_or("on") == "on" {
+                        console_println!("-- ECHO ON");
+                        PORT1.echo.store(true, Ordering::Relaxed);
+                    } else {
+                        console_println!("-- ECHO OFF");
+                        PORT1.echo.store(false, Ordering::Relaxed);
+                    }
+                }
+                Some(rx) => console_println!("-- RX: {}", rx),
+                None => {}
+            }
+        }
     }
 }
 
