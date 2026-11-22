@@ -29,7 +29,7 @@ impl Port {
     pub const fn new() -> Self {
         Self {
             tx: Pipe::new(),
-            echo: AtomicBool::new(true),
+            echo: AtomicBool::new(false),
         }
     }
 }
