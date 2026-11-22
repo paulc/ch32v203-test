@@ -20,7 +20,8 @@ ch32-hal = {
         "memory-x", 
         "embassy", 
         "time-driver-tim2", 
-        "rt"
+        "rt",
+        "exti",
     ],
     default-features = false,
 }
