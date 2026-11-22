@@ -3,7 +3,8 @@
 
 //
 // This example connects to a JDY23 BLE/Serial module over USART2
-// with a simple CLI on the serial console (USART1)
+// with a simple CLI on the serial console (USART1). When the JDY23
+// is connected the CLI implements a transparent TX/RX mode.
 //
 // The JDT23 always starts at 9600 baud when powered on and after reset
 // (AT+RST) but will retain the set baud rate while powered on so we
@@ -21,7 +22,10 @@ use ch32_hal::mode::Async;
 use ch32_hal::usart;
 
 use embassy_executor::Spawner;
+use embassy_futures::select::{select, select3, Either, Either3};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
+use embassy_sync::signal::Signal;
 use embassy_time::{with_timeout, Duration, Timer};
 
 use portable_atomic::{AtomicBool, Ordering};
@@ -29,9 +33,10 @@ use portable_atomic::{AtomicBool, Ordering};
 use static_cell::StaticCell;
 
 use v203::console_println;
-use v203::serial::{serial1_read, serial1_write, RxChannelType, RxReceiverType, PORT1};
+use v203::serial::{serial1_read, serial1_write, RxChannelType, RxReceiverType, TxSink, PORT1};
 
 static RX_CHANNEL: StaticCell<RxChannelType> = StaticCell::new();
+static CONNECTED_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 static CONNECTED: AtomicBool = AtomicBool::new(false);
 
 bind_interrupts!(struct Irqs {
@@ -93,7 +98,12 @@ async fn main(spawner: Spawner) -> ! {
         }
     };
 
-    console_println!("\r\n=== JDY23 ===");
+    console_println!(r"      _ ______   __   ____  _____ ");
+    console_println!(r"     | |  _ \ \ / /  |___ \|___ / ");
+    console_println!(r"  _  | | | | \ V /____ __) | |_ \ ");
+    console_println!(r" | |_| | |_| || |_____/ __/ ___) |");
+    console_println!(r"  \___/|____/ |_|    |_____|____/ ");
+    console_println!(r"                                  ");
 
     match async {
         // Force JDY23 baudrate to 115200
@@ -215,6 +225,7 @@ pub async fn status_handler(mut status: ExtiInput<'static>) {
         Timer::after_millis(100).await; // Debounce
         if status.is_high() {
             CONNECTED.store(true, Ordering::Relaxed);
+            CONNECTED_SIGNAL.signal(());
             console_println!(">>> CONNECTED");
             status.wait_for_low().await;
             CONNECTED.store(false, Ordering::Relaxed);
@@ -229,38 +240,76 @@ pub async fn serial_handler(
     mut tx: usart::UartTx<'static, ch32_hal::peripherals::USART2, Async>,
     mut rx: usart::UartRx<'static, ch32_hal::peripherals::USART2, Async>,
 ) {
-    console_println!(">>> CLI INIT");
+    console_println!("----- COMMAND MODE ------");
     loop {
-        let line = chan.receive().await;
-        if !line.is_empty() {
-            let mut it = line.split_ascii_whitespace();
-            match it.next() {
-                Some("send") => {
-                    match send_cmd(&mut tx, &mut rx, it.next().unwrap_or("AT+STAT").as_bytes())
-                        .await
+        match select(chan.receive(), CONNECTED_SIGNAL.wait()).await {
+            Either::First(line) => {
+                // Command mode
+                if !line.is_empty() {
+                    let mut it = line.split_ascii_whitespace();
+                    match it.next() {
+                        Some("send") => {
+                            match send_cmd(
+                                &mut tx,
+                                &mut rx,
+                                it.next().unwrap_or("AT+STAT").as_bytes(),
+                            )
+                            .await
+                            {
+                                Ok(r) => console_println!(">>> {}", r.trim_ascii()),
+                                Err(e) => console_println!("!!! ERROR: {:#?}", e),
+                            }
+                        }
+                        Some("status") => {
+                            console_println!(">>> CONNECTED: {}", CONNECTED.load(Ordering::Relaxed))
+                        }
+                        Some("reset-baud") => match check_baud(&mut tx, &mut rx).await {
+                            Ok(_) => console_println!(">>> OK"),
+                            Err(e) => console_println!("!!! ERROR: {:#?}", e),
+                        },
+                        Some("echo") => {
+                            if it.next().unwrap_or("on") == "on" {
+                                console_println!("-- ECHO ON");
+                                PORT1.echo.store(true, Ordering::Relaxed);
+                            } else {
+                                console_println!("-- ECHO OFF");
+                                PORT1.echo.store(false, Ordering::Relaxed);
+                            }
+                        }
+                        Some(rx) => console_println!("-- ERROR: {}", rx),
+                        None => {}
+                    }
+                }
+            }
+            Either::Second(_) => {
+                // Transparent Mode
+                console_println!("----- TRANSPARENT MODE ------");
+                let mut buf = [0_u8; 64];
+                while CONNECTED.load(Ordering::Relaxed) {
+                    match select3(
+                        rx.read_until_idle(&mut buf),
+                        chan.receive(),
+                        Timer::after_millis(500),
+                    )
+                    .await
                     {
-                        Ok(r) => console_println!(">>> {}", r.trim_ascii()),
-                        Err(e) => console_println!("!!! ERROR: {:#?}", e),
+                        Either3::First(Ok(n)) => {
+                            if &buf[..n] == b"+DISCONNECT\r\n" {
+                                break;
+                            }
+                            let _ = TxSink(&PORT1.tx).push(&buf[..n]);
+                        }
+                        Either3::First(Err(_)) => {}
+                        Either3::Second(line) => {
+                            let _ = tx.write(line.as_bytes()).await;
+                            let _ = tx.write(b"\r\n").await;
+                        }
+                        Either3::Third(_) => {
+                            // Timeout to force CONNECTED check
+                        }
                     }
                 }
-                Some("reset-baud") => match check_baud(&mut tx, &mut rx).await {
-                    Ok(_) => console_println!(">>> OK"),
-                    Err(e) => console_println!("!!! ERROR: {:#?}", e),
-                },
-                Some("status") => {
-                    console_println!(">>> CONNECTED: {}", CONNECTED.load(Ordering::Relaxed))
-                }
-                Some("echo") => {
-                    if it.next().unwrap_or("on") == "on" {
-                        console_println!("-- ECHO ON");
-                        PORT1.echo.store(true, Ordering::Relaxed);
-                    } else {
-                        console_println!("-- ECHO OFF");
-                        PORT1.echo.store(false, Ordering::Relaxed);
-                    }
-                }
-                Some(rx) => console_println!("-- ERROR: {}", rx),
-                None => {}
+                console_println!("----- COMMAND MODE ------");
             }
         }
     }
