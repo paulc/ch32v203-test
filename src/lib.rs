@@ -1,4 +1,4 @@
 #![no_std]
 
-pub mod lowpower;
+pub mod power;
 pub mod serial;

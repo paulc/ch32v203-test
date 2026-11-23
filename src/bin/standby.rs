@@ -8,7 +8,7 @@ use ch32_hal::usart;
 use embassy_executor::Spawner;
 use embassy_time::Timer;
 
-use v203::lowpower;
+use v203::power;
 
 use ufmt::uwrite;
 
@@ -20,8 +20,8 @@ const RCC_CFG: ch32_hal::rcc::Config = ch32_hal::rcc::Config::SYSCLK_FREQ_96MHZ_
 
 #[embassy_executor::main(entry = "qingke_rt::entry")]
 async fn main(_spawner: Spawner) -> ! {
-    let reset = lowpower::reset_cause(); // first thing, before init/await
-    let woke_from_standby = reset.cause == lowpower::ResetCause::StandbyWake;
+    let reset = power::reset_cause(); // first thing, before init/await
+    let woke_from_standby = reset.cause == power::ResetCause::StandbyWake;
 
     let config = ch32_hal::Config {
         rcc: RCC_CFG,
@@ -35,7 +35,7 @@ async fn main(_spawner: Spawner) -> ! {
 
     let mut buf = heapless::String::<256>::new();
 
-    lowpower::gpio_all_pulldown(false);
+    power::gpio_all_pulldown(false);
     let _ = Input::new(uart_tx.reborrow(), Pull::Up);
 
     Timer::after_millis(500).await;
@@ -65,14 +65,14 @@ async fn main(_spawner: Spawner) -> ! {
         }
     }
 
-    let rtc_init = lowpower::rtc_init().is_ok();
+    let rtc_init = power::rtc_init().is_ok();
 
     if !woke_from_standby {
         // Clear BKP regs
-        lowpower::bkp_write_buf([0_u8; 20]);
+        power::bkp_write_buf([0_u8; 20]);
     }
 
-    let counter = lowpower::bkp_read(1);
+    let counter = power::bkp_read(1);
     let _ = uwrite!(
         buf,
         "=== WAKE: cause={} rst={} csr={} rtc_init={} counter={}\r\n",
@@ -86,7 +86,7 @@ async fn main(_spawner: Spawner) -> ! {
     let _ = uart_tx.flush().await;
     buf.clear();
 
-    let mut bkp = lowpower::bkp_read_buf();
+    let mut bkp = power::bkp_read_buf();
     let _ = uwrite!(buf, "=== BKP: {:?}\r\n", bkp);
     let _ = uart_tx.write(buf.as_bytes()).await;
     let _ = uart_tx.flush().await;
@@ -94,17 +94,17 @@ async fn main(_spawner: Spawner) -> ! {
 
     let c2 = counter.wrapping_add(1).wrapping_pow(2) as u32;
     bkp[16..20].copy_from_slice(&c2.to_le_bytes());
-    lowpower::bkp_write_buf(bkp);
+    power::bkp_write_buf(bkp);
 
-    lowpower::bkp_write(1, counter.wrapping_add(1));
+    power::bkp_write(1, counter.wrapping_add(1));
 
     loop {
         led.set_high();
-        lowpower::stop_for_ms(500, RCC_CFG).unwrap();
+        power::stop_for_ms(500, RCC_CFG).unwrap();
         led.set_low();
 
         // Standby
-        lowpower::standby_for_ms(2000, false, false);
+        power::standby_for_ms(2000, false, false);
     }
 }
 

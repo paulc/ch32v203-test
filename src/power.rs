@@ -12,16 +12,16 @@
 //! Usage:
 //!     const RCC_CFG: ch32_hal::rcc::Config = ch32_hal::rcc::Config::SYSCLK_FREQ_96MHZ_HSI;
 //!     let p = ch32_hal::init(ch32_hal::Config { rcc: RCC_CFG, ..Default::default() });
-//!     lowpower::gpio_all_pulldown(false);       // before creating pin drivers
-//!     let reset = lowpower::reset_cause();      // first thing in main
-//!     let from_standby = reset.cause == lowpower::ResetCause::StandbyWake;
-//!     lowpower::rtc_init().unwrap();
+//!     power::gpio_all_pulldown(false);       // before creating pin drivers
+//!     let reset = power::reset_cause();      // first thing in main
+//!     let from_standby = reset.cause == power::ResetCause::StandbyWake;
+//!     power::rtc_init().unwrap();
 //!     ...
-//!     match lowpower::stop_for_ms(5_000, RCC_CFG).unwrap() {
-//!         lowpower::Wake::Alarm => { /* timed out */ }
-//!         lowpower::Wake::Other => { /* EXTI pin etc. */ }
+//!     match power::stop_for_ms(5_000, RCC_CFG).unwrap() {
+//!         power::Wake::Alarm => { /* timed out */ }
+//!         power::Wake::Other => { /* EXTI pin etc. */ }
 //!     }
-//!     lowpower::standby_for_ms(5_000, false, true); // never returns; PA0 can wake
+//!     power::standby_for_ms(5_000, false, true); // never returns; PA0 can wake
 //!
 //! The SDI debug link drops whenever the chip is in STOP/STANDBY: use
 //! `try_println!` (plain `println!` blocks forever once wlink loses the link).
