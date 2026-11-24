@@ -4,8 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-default = ["embassy-executor/platform-riscv32"]
+default = ["platform-riscv32", "time-driver-systick"]
+time-driver-systick = []
+time-driver-tim2 = ["ch32-hal/time-driver-tim2"]
 platform-spin = ["embassy-executor/platform-spin"]
+platform-riscv32= ["embassy-executor/platform-riscv32"]
 usart2 = []
 
 [dependencies]
@@ -19,7 +22,7 @@ ch32-hal = {
         "ch32v203g6u6",
         "memory-x", 
         "embassy", 
-        "time-driver-tim2", 
+        # Use time driver from crate features
         "rt",
         "exti",
     ],
@@ -47,6 +50,7 @@ heapless = { version = "0.9.3", features = ["ufmt"] }
 static_cell = "2.1.1"
 critical-section = "1.2.0"
 panic-halt = "1.0"
+rand = { version = "0.10.4", default-features = false }
 
 [profile.release]
 opt-level = "z"        # try "s" too — sometimes wins
