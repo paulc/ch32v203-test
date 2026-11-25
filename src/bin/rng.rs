@@ -15,7 +15,7 @@ use v203::console_println;
 use v203::serial::{serial1_read, serial1_write, RxChannelType, RxReceiverType};
 
 use rand::rngs::SmallRng;
-use rand::{RngExt, SeedableRng};
+use rand::{Rng, RngExt, SeedableRng};
 
 static RX_CHANNEL: StaticCell<RxChannelType> = StaticCell::new();
 
@@ -60,8 +60,11 @@ async fn main(spawner: Spawner) -> ! {
 
     // RNG
     let mut adc = ch32_hal::adc::Adc::new(p.ADC1, Default::default());
-    let seed = rng_seed(&mut adc, &mut ch32_hal::adc::Temperature).unwrap();
+    let seed = rng_seed(&mut adc, &mut ch32_hal::adc::Temperature).unwrap_or(uid() ^ now_ticks());
     let mut rng = SmallRng::seed_from_u64(seed);
+    let mut buf = [0_u8; 8];
+    rng.fill_bytes(&mut buf);
+    console_println!(">> {:?}", buf);
 
     // LED
     let mut led = Output::new(p.PA15, Level::Low, Default::default());
@@ -110,4 +113,26 @@ pub fn rng_seed(adc: &mut Adc<'static, ADC1>, chan: &mut impl AdcChannel<ADC1>) 
     }
     // Check we have at-least 128 changes
     (changes >= 128).then_some(h)
+}
+
+fn uid() -> u64 {
+    u64::from_le_bytes(ch32_hal::signature::unique_id()[..8].try_into().unwrap())
+}
+
+#[cfg(feature = "time-driver-systick")]
+fn now_ticks() -> u64 {
+    const STK: u32 = 0xE000_F000;
+    loop {
+        let hi = unsafe { core::ptr::read_volatile((STK + 0x0C) as *const u32) };
+        let lo = unsafe { core::ptr::read_volatile((STK + 0x08) as *const u32) };
+        if unsafe { core::ptr::read_volatile((STK + 0x0C) as *const u32) } == hi {
+            return ((hi as u64) << 32) | lo as u64;
+        }
+    }
+}
+
+#[cfg(feature = "time-driver-tim2")]
+fn now_ticks() -> u64 {
+    const TIM2: u32 = 0x4000_0000;
+    (unsafe { core::ptr::read_volatile((TIM2 + 0x24) as *const u16) }) as u64
 }
